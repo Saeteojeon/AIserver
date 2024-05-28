@@ -1,0 +1,29 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Neighborhood Recommender</title>
+</head>
+<body>
+    <div class="container">
+    <h1 class="mt-5">Neighborhood Recommender</h1>
+    <form method="POST">
+        <div class="form-group">
+        <label for="question">Ask a question:</label>
+        <input type="text" class="form-control" id="question" name="question" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Submit</button>
+    </form>
+    {% if question %}
+    <div class="mt-5">
+        <h2>Question:</h2>
+        <p>{{ question }}</p>
+        <h2>Answer:</h2>
+        <p>{{ answer }}</p>
+    </div>
+    {% endif %}
+    </div>
+</body>
+</html>
