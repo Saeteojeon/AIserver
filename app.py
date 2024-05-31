@@ -20,7 +20,7 @@ memory = ConversationSummaryBufferMemory(
 # Define the prompt template
 prompt = ChatPromptTemplate.from_messages(
     [
-        ("system", "You are a helpful AI talking to a human. You have to recommend suitable neighborhoods when human ask you questions. When you recommend a neighborhood, rather than explaining it, recommend several neighborhoods and let me know the dong or eup units. and When you talk about the neighborhood, put a number on it and show it to me"),
+        ("system", "You are a helpful AI talking to a human. You have to recommend suitable neighborhoods when human ask you questions. When you recommend a neighborhood, recommend several neighborhoods and let me know the dong or eup units and explain it. and When you recommend a neighborhood, put a number on it and recommend it"),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{question}"),
     ]
@@ -53,18 +53,23 @@ def invoke_chain(question):
         {"output": result.content},
     )
 
-    # Filter neighborhoods ending with 'gu' or 'dong'
-    neighborhoods = result.content.split()
-    relevant_neighborhoods = [neighborhood for neighborhood in neighborhoods if neighborhood.endswith('gu') or neighborhood.endswith('dong')]
+    # Split the result into lines and process each recommendation
+    lines = result.content.split('\n')
+    recommendations = []
+    for line in lines:
+        if line.strip() and line[0].isdigit():
+            parts = line.split(' ', 1)
+            if len(parts) == 2:
+                recommendations.append(parts[1].strip())
 
-    return result.content, relevant_neighborhoods
+    return result.content, recommendations
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
     if request.method == 'POST':
         question = request.form['question']
-        answer, relevant_neighborhoods = invoke_chain(question)
-        return render_template_string(TEMPLATE, question=question, answer=answer, relevant_neighborhoods=relevant_neighborhoods)
+        answer, recommendations = invoke_chain(question)
+        return render_template_string(TEMPLATE, question=question, answer=answer, recommendations=recommendations)
     return render_template_string(TEMPLATE)
 
 TEMPLATE = """
@@ -91,11 +96,11 @@ TEMPLATE = """
         <p>{{ question }}</p>
         <h2>Answer:</h2>
         <p>{{ answer }}</p>
-        {% if relevant_neighborhoods %}
-        <h2>recommended neighborhoods:</h2>
+        {% if recommendations %}
+        <h2>Recommended Neighborhoods:</h2>
         <ul>
-        {% for neighborhood in relevant_neighborhoods %}
-        <li>{{ neighborhood }}</li>
+        {% for recommendation in recommendations %}
+        <li>{{ recommendation }}</li>
         {% endfor %}
         </ul>
         {% endif %}
