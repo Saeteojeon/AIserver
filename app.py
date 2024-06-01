@@ -11,7 +11,6 @@ app = Flask(__name__)
 
 # Initialize the LLM
 llm = ChatOpenAI(model="gpt-4-turbo", temperature=0.1)
-
 # Initialize the memory
 memory = ConversationSummaryBufferMemory(
     llm=llm,
@@ -22,7 +21,7 @@ memory = ConversationSummaryBufferMemory(
 # Define the prompt template
 prompt = ChatPromptTemplate.from_messages(
     [
-        ("system", "You are a helpful AI talking to a human. You have to recommend suitable neighborhoods when human ask you questions. When you recommend a neighborhood, recommend several neighborhoods and let me know the dong or eup units. and When you talk about the neighborhood, put a number on it and show it to human"),
+        ("system", "You are a helpful AI talking to a human. You have to recommend suitable neighborhoods when human ask you questions. When you recommend a neighborhood, please recommend several neighborhoods and let me know the dong or eup units . And When you talk about the neighborhood, put a number on it and show it to human"),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{question}"),
     ]
@@ -54,23 +53,15 @@ def invoke_chain(question):
         {"input": question},
         {"output": result.content},
     )
+    # Extract neighborhood names ending with 'dong' or 'eup'
+    relevant_neighborhoods = []
+    words = result.content.replace(',', ' ').split()  # Replace commas with spaces and then split
+    for word in words:
+        clean_word = word.strip('.,**:()')
+        if clean_word.endswith('-dong') or clean_word.endswith('-eup'):
+            relevant_neighborhoods.append(clean_word)
 
-<<<<<<< HEAD
-    # Filter neighborhoods ending with 'gu' or 'dong'
-    neighborhoods = result.content.split()
-    relevant_neighborhoods = [neighborhood for neighborhood in neighborhoods if neighborhood.endswith('-gu') or neighborhood.endswith('-dong') or neighborhood.endswith('-eup')] 
-=======
-    # Split the result into lines and process each recommendation
-    lines = result.content.split('\n')
-    recommendations = []
-    for line in lines:
-        if line.strip() and line[0].isdigit():
-            parts = line.split(' ', 1)
-            if len(parts) == 2:
-                recommendations.append(parts[1].strip())
->>>>>>> c69bd10ab96c9611075f6c8c7576cdd937693713
-
-    return result.content, recommendations
+    return result.content, relevant_neighborhoods
 
 # Database setup
 def init_db():
@@ -110,7 +101,7 @@ def save_to_db(question, answer):
         conn.close()
     except Error as e:
         print(f"Error: {e}")
-        
+
 #localhost 연결
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -129,7 +120,7 @@ def get_gpt_request():
         question = data.get('question')
         answer, relevant_neighborhoods = invoke_chain(question)
         save_to_db(question=question, answer=answer)
-        
+
         response = {
             "message": "Data saved successfully",
             "data": {
@@ -137,7 +128,7 @@ def get_gpt_request():
                 "answer": answer
             }
         }
-        
+
         return jsonify(response), 200
     return render_template_string(TEMPLATE)
 
@@ -166,11 +157,11 @@ TEMPLATE = """
         <p>{{ question }}</p>
         <h2>Answer:</h2>
         <p>{{ answer }}</p>
-        {% if recommendations %}
-        <h2>Recommended Neighborhoods:</h2>
+        {% if relevant_neighborhoods %}
+        <h2>recommended neighborhoods:</h2>
         <ul>
-        {% for recommendation in recommendations %}
-        <li>{{ recommendation }}</li>
+        {% for neighborhood in relevant_neighborhoods %}
+        <li>{{ neighborhood }}</li>
         {% endfor %}
         </ul>
         {% endif %}
@@ -181,6 +172,7 @@ TEMPLATE = """
 </html>
 """
 
+
 if __name__ == '__main__':
     init_db()
-    app.run('0.0.0.0', port=5000, debug=True)
+    app.run('0.0.0.0', port=5001, debug=True)
