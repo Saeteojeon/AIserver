@@ -22,11 +22,7 @@ memory = ConversationSummaryBufferMemory(
 # Define the prompt template
 prompt = ChatPromptTemplate.from_messages(
     [
-<<<<<<< HEAD
         ("system", "You are a helpful AI talking to a human. You have to recommend suitable neighborhoods when human ask you questions. When you recommend a neighborhood, recommend several neighborhoods and let me know the dong or eup units. and When you talk about the neighborhood, put a number on it and show it to human"),
-=======
-        ("system", "You are a helpful AI talking to a human. You have to recommend suitable neighborhoods when human ask you questions. When you recommend a neighborhood, recommend several neighborhoods and let me know the dong or eup units and explain it. and When you recommend a neighborhood, put a number on it and recommend it"),
->>>>>>> c69bd10ab96c9611075f6c8c7576cdd937693713
         MessagesPlaceholder(variable_name="history"),
         ("human", "{question}"),
     ]
@@ -120,14 +116,9 @@ def save_to_db(question, answer):
 def home():
     if request.method == 'POST':
         question = request.form['question']
-<<<<<<< HEAD
         answer, relevant_neighborhoods = invoke_chain(question)
         save_to_db(question=question, answer=answer)
         return render_template_string(TEMPLATE, question=question, answer=answer, relevant_neighborhoods=relevant_neighborhoods)
-=======
-        answer, recommendations = invoke_chain(question)
-        return render_template_string(TEMPLATE, question=question, answer=answer, recommendations=recommendations)
->>>>>>> c69bd10ab96c9611075f6c8c7576cdd937693713
     return render_template_string(TEMPLATE)
 
 #postman으로 연결
