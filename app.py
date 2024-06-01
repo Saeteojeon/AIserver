@@ -1,9 +1,11 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, jsonify
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import LLMChain
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from mysql.connector import Error
+import mysql.connector
 
 app = Flask(__name__)
 
@@ -20,7 +22,7 @@ memory = ConversationSummaryBufferMemory(
 # Define the prompt template
 prompt = ChatPromptTemplate.from_messages(
     [
-        ("system", "You are a helpful AI talking to a human. You have to recommend suitable neighborhoods when human ask you questions. When you recommend a neighborhood, rather than explaining it, recommend several neighborhoods and let me know the dong or eup units. and When you talk about the neighborhood, put a number on it and show it to me"),
+        ("system", "You are a helpful AI talking to a human. You have to recommend suitable neighborhoods when human ask you questions. When you recommend a neighborhood, recommend several neighborhoods and let me know the dong or eup units. and When you talk about the neighborhood, put a number on it and show it to human"),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{question}"),
     ]
@@ -55,18 +57,80 @@ def invoke_chain(question):
 
     # Filter neighborhoods ending with 'gu' or 'dong'
     neighborhoods = result.content.split()
-    relevant_neighborhoods = [neighborhood for neighborhood in neighborhoods if neighborhood.endswith('gu') or neighborhood.endswith('dong')]
+    relevant_neighborhoods = [neighborhood for neighborhood in neighborhoods if neighborhood.endswith('-gu') or neighborhood.endswith('-dong') or neighborhood.endswith('-eup')] 
 
     return result.content, relevant_neighborhoods
 
+# Database setup
+def init_db():
+    try:
+        conn = mysql.connector.connect(
+            host='127.0.0.1',
+            user='root',
+            password='Tngh1004!!',
+            database='introduceOurTown'
+        )
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS introduceOurTown.query (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL
+            )
+        ''')
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Error as e:
+        print(f"Error: {e}")
+
+def save_to_db(question, answer):
+    try:
+        conn = mysql.connector.connect(
+            host='127.0.0.1',
+            user='root',
+            password='Tngh1004!!',
+            database='introduceOurTown'
+        )
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO introduceOurTown.query (query, answer) VALUES (%s, %s)', (question, answer))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Error as e:
+        print(f"Error: {e}")
+        
+#localhost 연결
 @app.route('/', methods=['GET', 'POST'])
 def home():
     if request.method == 'POST':
         question = request.form['question']
         answer, relevant_neighborhoods = invoke_chain(question)
+        save_to_db(question=question, answer=answer)
         return render_template_string(TEMPLATE, question=question, answer=answer, relevant_neighborhoods=relevant_neighborhoods)
     return render_template_string(TEMPLATE)
 
+#postman으로 연결
+@app.route('/get/gpt_request', methods=['POST'])
+def get_gpt_request():
+    if request.method == 'POST':
+        data = request.get_json()
+        question = data.get('question')
+        answer, relevant_neighborhoods = invoke_chain(question)
+        save_to_db(question=question, answer=answer)
+        
+        response = {
+            "message": "Data saved successfully",
+            "data": {
+                "question": question,
+                "answer": answer
+            }
+        }
+        
+        return jsonify(response), 200
+    return render_template_string(TEMPLATE)
+
+#localhost 연결하기 위한 TEMPLATE
 TEMPLATE = """
 <!doctype html>
 <html lang="en">
@@ -107,4 +171,5 @@ TEMPLATE = """
 """
 
 if __name__ == '__main__':
-    app.run('0.0.0.0', port=5001, debug=True)
+    init_db()
+    app.run('0.0.0.0', port=5000, debug=True)
