@@ -15,7 +15,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # Initialize the LLM
-llm = ChatOpenAI(model="gpt-4-turbo", temperature=0.1)
+llm = ChatOpenAI(model="gpt-4-turbo", temperature=0.1, openai_api_key=os.getenv("OPENAI_API_KEY"))
 # Initialize the memory
 memory = ConversationSummaryBufferMemory(
     llm=llm,
