@@ -74,7 +74,7 @@ def init_db():
         conn = mysql.connector.connect(
             host='127.0.0.1',
             user='root',
-            password='Tngh1004!!',
+            password=os.getenv("DB_PASSWORD"),
             database='introduceOurTown'
         )
         cursor = conn.cursor()
@@ -96,7 +96,7 @@ def save_to_db(question, answer):
         conn = mysql.connector.connect(
             host='127.0.0.1',
             user='root',
-            password='Tngh1004!!',
+            password=os.getenv("DB_PASSWORD"),
             database='introduceOurTown'
         )
         cursor = conn.cursor()
