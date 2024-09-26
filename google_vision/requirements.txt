@@ -1,0 +1,5 @@
+Flask
+python-dotenv
+requests
+scikit-learn
+google-cloud-vision
