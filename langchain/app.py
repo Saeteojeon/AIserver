@@ -6,12 +6,16 @@ from langchain.schema.runnable import RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from mysql.connector import Error
 from flask_caching import Cache
+from dotenv import load_dotenv
 import mysql.connector
 import os
 import asyncio
 
 # Flask 애플리케이션 초기화
 app = Flask(__name__)
+
+# 환경 변수 로드 (API 키 등)
+load_dotenv()
 
 # 캐시 설정 (예: 메모리 캐시 사용)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
