@@ -12,9 +12,11 @@ import os
 from dotenv import load_dotenv
 
 app = Flask(__name__)
+# OpenAI API 키 설정
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # 언어 모델 초기화, 나중에 gpt-4로 변경 예정
-llm = ChatOpenAI(model="gpt-4-turbo", temperature=0.0, max_tokens=1000)
+llm = ChatOpenAI(model="gpt-4-turbo",api_key=openai.api_key, temperature=0.0, max_tokens=1000, )
 
 # 환경 변수 로드
 load_dotenv()
