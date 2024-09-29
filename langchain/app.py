@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 
 app = Flask(__name__)
 
+# 언어 모델 초기화, 나중에 gpt-4로 변경 예정
+llm = ChatOpenAI(model="gpt-4-turbo", temperature=0.0, max_tokens=1000)
+
 # 환경 변수 로드
 load_dotenv()
 
