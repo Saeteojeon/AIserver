@@ -1,37 +1,28 @@
 from flask import Flask, request, jsonify
 from langchain.memory import ConversationSummaryBufferMemory
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.chains import LLMChain
-from langchain.schema.runnable import RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from mysql.connector import Error
+from flask_swagger_ui import get_swaggerui_blueprint
 from flask_caching import Cache
-from dotenv import load_dotenv
+from mysql.connector import Error
 import mysql.connector
 import os
-import asyncio
 
-# Flask 애플리케이션 초기화
+from dotenv import load_dotenv
+
 app = Flask(__name__)
 
-# 환경 변수 로드 (API 키 등)
+# 환경 변수 로드
 load_dotenv()
 
-# 캐시 설정 (예: 메모리 캐시 사용)
+# 캐시 설정 (메모리 캐시 사용)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # 캐시된 AI 응답 함수
 @cache.cached(timeout=300, key_prefix='ai_response')
-def cached_ai_response(region, radius, question):
-    return invoke_chain(region, radius, question)
-
-# 비동기 AI 응답 처리
-async def async_invoke_chain(region, radius, question):
-    result = await asyncio.to_thread(invoke_chain, region, radius, question)
-    return result
-
-# 언어 모델 초기화, 나중에 gpt-4로 변경 예정
-llm = ChatOpenAI(model="gpt-4-turbo", temperature=0.0, max_tokens=1000)
+def cached_invoke_chain(question):
+    return invoke_chain(question)
 
 # 메모리 초기화
 memory = ConversationSummaryBufferMemory(
@@ -43,14 +34,11 @@ memory = ConversationSummaryBufferMemory(
 # 프롬프트 템플릿 정의
 prompt = ChatPromptTemplate.from_messages(
     [
-        ("system", "You are a helpful AI that recommends neighborhoods. Respond with at least three neighborhoods in the format '동네: 설명'. At the end, provide the main keywords from the user's question, prefixed with 'Keywords:'."),
+        ("system", "You are a helpful AI that recommends neighborhoods. Your response should follow this format:\nKeyword: [list of keywords]\nLocation: [recommended area]\ndescription: [description of the area].\nAnswer with at least two neighborhoods."),
         MessagesPlaceholder(variable_name="history"),
         ("human", "{question}"),
     ]
 )
-
-
-
 
 # LLMChain 생성
 chain = LLMChain(
@@ -60,152 +48,141 @@ chain = LLMChain(
     verbose=True,
 )
 
-# 메모리 로드 함수
-def load_memory(input):
-    return memory.load_memory_variables({})["history"]
+# Swagger 설정
+SWAGGER_URL = '/swagger'
+API_URL = '/static/swagger.json'  # Swagger 정의 파일 경로
 
-# RunnablePassthrough 체인 정의  
-chain = RunnablePassthrough.assign(history=load_memory) | prompt | llm
+swaggerui_blueprint = get_swaggerui_blueprint(
+    SWAGGER_URL,
+    API_URL,
+    config={
+        'app_name': "Neighborhood Recommendation API"
+    }
+)
 
-# AI 체인 호출 및 추천 수행 함수
-def invoke_chain(region, radius, question):
-    # AI 모델에 질문과 지역 정보를 함께 전달하여 처리
-    formatted_question = f"지역: {region}, 반경: {radius}km, 질문: {question}"
+app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
+
+def invoke_chain(question):
+    # AI 모델에 질문을 전달하여 처리
     result = chain.invoke(
         {
-            "question": formatted_question
+            "question": question
         }
     )
+    
+    # result가 dict 형식으로 반환되었을 때, 'text' 키에서 응답을 가져옴
+    response_text = result["text"] if isinstance(result, dict) else result
+
+    # 디버깅용으로 응답 출력
+    print(f"AI 응답: {response_text}")
+
     memory.save_context(
-        {"input": formatted_question},
-        {"output": result.content},
+        {"input": question},
+        {"output": response_text},
     )
     
-    # '동네: 설명' 형식으로 추천 결과를 파싱하고, 키워드 추출
-    neighborhood_recommendations = []
+    # 응답을 파싱하여 키워드 및 동네 정보 추출
     keywords = []
-    lines = result.content.split('\n')  # 결과를 줄 단위로 분리
-    keyword_section = False  # 키워드 구분 플래그
+    neighborhood_recommendations = []
+    lines = response_text.split('\n')  # 결과를 줄 단위로 분리
+    
+    current_location = ""
+    current_description = ""
+    location_description_map = []  # Location과 description을 매핑할 리스트
     
     for line in lines:
-        line = line.strip()  # 공백 제거
-        if not line:
-            continue  # 빈 줄은 무시
-        if line.startswith('Keywords:'):  # 키워드 섹션 시작
-            keyword_section = True
-            keywords = line.replace('Keywords:', '').strip().split(',')
-            keywords = [keyword.strip() for keyword in keywords]
-        elif not keyword_section and ':' in line:  # 키워드 섹션이 아닌 경우에만 동네 정보 파싱
-            neighborhood, description = line.split(':', 1)
-            neighborhood_recommendations.append({
-                "neighborhood": neighborhood.strip(),
-                "description": description.strip()
-            })
+        line = line.strip()
+        if line.startswith("Keyword:"):
+            # Keyword: 이후의 내용을 파싱하여 리스트로 저장
+            keywords = [kw.strip() for kw in line.replace("Keyword:", "").split(',')]
+        elif line.startswith("Location:"):
+            # Location에 여러 개의 장소가 있을 수 있으므로 분리
+            locations = line.replace("Location:", "").strip().split(',')
+        elif line.startswith("description:") or line.startswith("Description:"):
+            # description을 추출하여 임시 저장
+            current_description = line.replace("description:", "").replace("Description:", "").strip()
+            # 각각의 location에 description을 할당
+            for location in locations:
+                neighborhood_recommendations.append({
+                    "location": location.strip(),
+                    "description": current_description
+                })
     
-    return result.content, neighborhood_recommendations, keywords
+    return response_text, neighborhood_recommendations, keywords
 
-
-
-
-# 데이터베이스 초기화 함수
-def init_db():
-    try:
-        conn = mysql.connector.connect(
-            host='127.0.0.1',
-            user='root',
-            password=os.getenv("DB_PASSWORD"),
-            database='introduceOurTown'
-        )
-        cursor = conn.cursor()
-        # query 테이블 생성
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS introduceOurTown.query (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                region VARCHAR(255) NOT NULL,
-                radius INT NOT NULL,
-                question TEXT NOT NULL,
-                answer TEXT NOT NULL
-            )
-        ''')
-        # neighborhood_recommendations 테이블 생성
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS introduceOurTown.neighborhood_recommendations (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                query_id INT NOT NULL,
-                neighborhood VARCHAR(255) NOT NULL,
-                description TEXT NOT NULL,
-                FOREIGN KEY (query_id) REFERENCES introduceOurTown.query(id) ON DELETE CASCADE
-            )
-        ''')
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Error as e:
-        print(f"Error: {e}")
-
-# 데이터베이스에 질문과 답변 저장 함수
-def save_to_db(region, radius, question, answer, neighborhood_recommendations):
-    try:
-        conn = mysql.connector.connect(
-            host='127.0.0.1',
-            user='root',
-            password=os.getenv("DB_PASSWORD"),
-            database='introduceOurTown'
-        )
-        cursor = conn.cursor()
-        # query 테이블에 저장
-        cursor.execute(
-            'INSERT INTO introduceOurTown.query (region, radius, question, answer) VALUES (%s, %s, %s, %s)',
-            (region, radius, question, answer)
-        )
-        query_id = cursor.lastrowid  # 방금 삽입한 query의 id 가져오기
-        
-        # neighborhood_recommendations 테이블에 저장
-        for neighborhood in neighborhood_recommendations:
-            cursor.execute(
-                'INSERT INTO introduceOurTown.neighborhood_recommendations (query_id, neighborhood, description) VALUES (%s, %s, %s)',
-                (query_id, neighborhood['neighborhood'], neighborhood['description'])
-            )
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Error as e:
-        print(f"Error: {e}")
-
-# Spring 서버에서 JSON 요청을 받음
+# Flask 서버에서 JSON 요청을 받음
 @app.route('/api/recommend-neighborhoods', methods=['POST'])
 def recommend_neighborhoods():
-    data = request.get_json()
+    try:
+        # spring 서버로부터 요청 데이터 받기
+        data = request.get_json()
 
-    # 필수 데이터 확인
-    if not data or 'region' not in data or 'radius' not in data or 'question' not in data:
-        return jsonify({"error": "Invalid input: 'region', 'radius', and 'question' fields are required"}), 400
+        if not data or 'question' not in data:
+            return jsonify({"error": "Invalid input: 'question' field is required"}), 400
+        
+        question = data['question']
+        
+        # AI 체인 호출 및 추천 결과 처리
+        answer, neighborhood_recommendations, keywords = invoke_chain(question)
+
+        # 캐시에서 AI 체인 호출 및 추천 결과 처리
+        answer, neighborhood_recommendations, keywords = cached_invoke_chain(question)
+        
+        # 응답 JSON 생성
+        response = {
+            "keywordList": keywords,  # 추출된 키워드 추가
+            "answer": [  # 여러 개의 동네 추천을 리스트로 반환
+                {
+                    "Location": rec["location"],
+                    "Description": rec["description"]
+                } for rec in neighborhood_recommendations
+            ]
+        }
+        
+        # 결과를 JSON으로 반환
+        return jsonify(response), 200
     
-    region = data['region']
-    radius = data['radius']
-    question = data['question']
-    
-    # AI 체인 호출 및 추천 결과 처리
-    answer, neighborhood_recommendations, keywords = invoke_chain(region, radius, question)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # 데이터베이스에 질문과 답변 저장
-    save_to_db(region, radius, question, answer, neighborhood_recommendations)
+'''
+# 데이터베이스 연결 함수
+def get_db_connection():
+    try:
+        conn = mysql.connector.connect(
+            host='localhost',
+            user='root',
+            password='your_password',
+            database='recommendation_db'
+        )
+        if conn.is_connected():
+            print("Connected to the database")
+        return conn
+    except Error as e:
+        print(f"Error connecting to MySQL: {e}")
+        return None
 
-    # 응답 JSON 생성
-    response = {
-        "region": region,
-        "radius": radius,
-        "question": question,
-        "answer": answer,
-        "keywords": keywords,  # 추출된 키워드 추가
-        "neighborhood_recommendations": neighborhood_recommendations  # 동네: 설명 형식으로 반환
-    }
-    
-    # 결과를 JSON으로 반환
-    return jsonify(response), 200
-
+# 데이터베이스에 질문과 추천 결과 저장
+def save_to_db(question, keywords, recommendations):
+    conn = get_db_connection()
+    if conn:
+        cursor = conn.cursor()
+        
+        # query 테이블에 질문과 키워드 저장
+        cursor.execute('INSERT INTO query (question, keywords) VALUES (%s, %s)', (question, ','.join(keywords)))
+        query_id = cursor.lastrowid
+        
+        # recommendation 테이블에 각 추천 결과 저장
+        for rec in recommendations:
+            cursor.execute(
+                'INSERT INTO recommendation (query_id, location, description) VALUES (%s, %s, %s)',
+                (query_id, rec["location"], rec["description"])
+            )
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+'''
 # Flask 서버 실행
 if __name__ == '__main__':
-    init_db()  # 데이터베이스 초기화
-    app.run('0.0.0.0', port=5001, debug=True)
+    app.run('0.0.0.0', port=5000, debug=True)
