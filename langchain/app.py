@@ -14,11 +14,12 @@ from dotenv import load_dotenv
 app =  Flask(__name__)
 
 
+# 환경 변수 로드
+load_dotenv()
+
 # 언어 모델 초기화, 나중에 gpt-4로 변경 예정
 llm = ChatOpenAI(model="gpt-4-turbo", openai_api_key=os.getenv("OPENAI_API_KEY"), temperature=0.0, max_tokens=1000, )
 
-# 환경 변수 로드
-load_dotenv()
 
 # 캐시 설정 (메모리 캐시 사용)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
