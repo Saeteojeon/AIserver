@@ -11,7 +11,7 @@ import os
 
 from dotenv import load_dotenv
 
-app = Flask(__name__)
+app =  Flask(__name__)
 
 
 # 언어 모델 초기화, 나중에 gpt-4로 변경 예정
