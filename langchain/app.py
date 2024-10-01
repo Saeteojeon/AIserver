@@ -138,8 +138,8 @@ def recommend_neighborhoods():
             "keywordList": keywords,  # 추출된 키워드 추가
             "answer": [  # 여러 개의 동네 추천을 리스트로 반환
                 {
-                    "Location": rec["location"],
-                    "Description": rec["description"]
+                    "location": rec["location"],
+                    "description": rec["description"]
                 } for rec in neighborhood_recommendations
             ]
         }
